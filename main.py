@@ -1,3 +1,4 @@
+import socket
 import os
 import datetime
 import sys
@@ -5,22 +6,13 @@ import time
 import subprocess
 import argparse
 
-from tflite_runtime.interpreter import Interpreter
+#from tflite_runtime.interpreter import Interpreter
+import tensorflow as tf
 from PIL import Image, ImageOps
 import numpy as np
 
 # read the absolute path
 script_dir = os.getcwd()
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="""
-    This script captures photos of the hands and makes image classification.
-    """)
-    parser.add_argument("step", help="Hand washing step")
-
-    args = parser.parse_args()
-
-    STEP = args.step
 
 def load_labels(path):
   with open(path, 'r') as f:
@@ -49,33 +41,63 @@ def classify_image(interpreter, image, top_k=1):
 # main
 
 labels = load_labels("./model/converted_tflite_quantized/labels.txt")
-interpreter = Interpreter("./model/converted_tflite_quantized/model.tflite")
+#interpreter = Interpreter("./model/converted_tflite_quantized/model.tflite")
+interpreter = tf.lite.Interpreter("./model/converted_tflite_quantized/model.tflite")
 interpreter.allocate_tensors()
 _, height, width, _ = interpreter.get_input_details()[0]['shape']
 
-results=[]
-for x in range(0, 5):
-    # call the .sh to capture the image
-    img_path = './webcam/hand_' + str(STEP) + '_' + str(x) + '.jpg'
+localIP     = "127.0.0.1"
+localPort   = 9150
+bufferSize  = 1024
 
-    #print(script_dir + '/webcam.sh ' + script_dir + ' ' + str(STEP) + ' ' + str(x))
-    os.system(
-        script_dir +
-        '/webcam.sh ' +
-        script_dir + ' ' +
-        str(STEP) + ' ' + str(x)
-    )
-    image = Image.open(img_path).convert('RGB').resize((width, height),Image.ANTIALIAS)
-    results += classify_image(interpreter, image)
-    time.sleep(0.1)
+# Create a datagram socket
+UDPServerSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
-cnt_class = 0
-for ind, pred in results:
-    if int(ind) == int(STEP):
-        cnt_class += 1
+# Bind to address and ip
+UDPServerSocket.bind((localIP, localPort))
 
-print(results)
-if cnt_class >= 3:
+print("Model server up and listening")
+
+# Listen for incoming datagrams
+while(True):
+    message, address = UDPServerSocket.recvfrom(bufferSize)
+    STEP = message.decode()
+    clientIP  = "Client IP Address:{}".format(address)
+
     print(STEP)
-else:
-    print(-1)
+    print(clientIP)
+
+    ##
+
+    results=[]
+    for x in range(0, 5):
+        # call the .sh to capture the image
+        img_path = './webcam/hand_' + str(STEP) + '_' + str(x) + '.jpg'
+
+        os.system(
+            script_dir +
+            '/webcam.sh ' +
+            script_dir + ' ' +
+            str(STEP) + ' ' + str(x)
+        )
+        image = Image.open(img_path).convert('RGB').resize((width, height),Image.ANTIALIAS)
+        results += classify_image(interpreter, image)
+        time.sleep(0.1)
+
+    cnt_class = 0
+    for ind, pred in results:
+        if int(ind) == int(STEP):
+            cnt_class += 1
+
+    #print(results)
+    if cnt_class >= 3:
+        msgFromServer = STEP
+    else:
+        msgFromServer = '-1'
+
+
+    # Sending a reply to client
+
+    bytesToSend         = str.encode(msgFromServer)
+
+    UDPServerSocket.sendto(bytesToSend, address)
