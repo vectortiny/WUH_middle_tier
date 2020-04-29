@@ -1,18 +1,15 @@
+import daemon
 import socket
 import os
 import datetime
 import sys
 import time
 import subprocess
-import argparse
 
 #from tflite_runtime.interpreter import Interpreter
 import tensorflow as tf
 from PIL import Image, ImageOps
 import numpy as np
-
-# read the absolute path
-script_dir = os.getcwd()
 
 def load_labels(path):
   with open(path, 'r') as f:
@@ -38,7 +35,8 @@ def classify_image(interpreter, image, top_k=1):
     ordered = np.argpartition(-output, top_k)
     return [(i, output[i]) for i in ordered[:top_k]]
 
-# main
+# read the absolute path
+script_dir = os.getcwd()
 
 labels = load_labels("./model/converted_tflite_quantized/labels.txt")
 #interpreter = Interpreter("./model/converted_tflite_quantized/model.tflite")
@@ -50,54 +48,47 @@ localIP     = "127.0.0.1"
 localPort   = 9150
 bufferSize  = 1024
 
-# Create a datagram socket
-UDPServerSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-
-# Bind to address and ip
-UDPServerSocket.bind((localIP, localPort))
-
 print("Model server up and listening")
 
-# Listen for incoming datagrams
-while(True):
-    message, address = UDPServerSocket.recvfrom(bufferSize)
-    STEP = message.decode()
-    clientIP  = "Client IP Address:{}".format(address)
+def main_program():
+    # Create a datagram socket
+    UDPServerSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+    # Bind to address and ip
+    UDPServerSocket.bind((localIP, localPort))
 
-    # print(STEP)
-    # print(clientIP)
+    while True:
+        message, address = UDPServerSocket.recvfrom(bufferSize)
+        STEP = message.decode()
+        clientIP  = "Client IP Address:{}".format(address)
 
-    ##
+        results=[]
+        for x in range(0, 5):
+            # call the .sh to capture the image
+            img_path = script_dir + '/webcam/hand_' + str(STEP) + '_' + str(x) + '.jpg'
 
-    results=[]
-    for x in range(0, 5):
-        # call the .sh to capture the image
-        img_path = './webcam/hand_' + str(STEP) + '_' + str(x) + '.jpg'
+            os.system(
+                script_dir +
+                '/webcam.sh ' +
+                script_dir + ' ' +
+                str(STEP) + ' ' + str(x)
+            )
+            image = Image.open(img_path).convert('RGB').resize((width, height),Image.ANTIALIAS)
+            results += classify_image(interpreter, image)
+            #time.sleep(0.1)
 
-        os.system(
-            script_dir +
-            '/webcam.sh ' +
-            script_dir + ' ' +
-            str(STEP) + ' ' + str(x)
-        )
-        image = Image.open(img_path).convert('RGB').resize((width, height),Image.ANTIALIAS)
-        results += classify_image(interpreter, image)
-        time.sleep(0.1)
+        cnt_class = 0
+        for ind, pred in results:
+            if int(ind) == int(STEP):
+                cnt_class += 1
 
-    cnt_class = 0
-    for ind, pred in results:
-        if int(ind) == int(STEP):
-            cnt_class += 1
+        if cnt_class >= 3:
+            msgFromServer = STEP
+        else:
+            msgFromServer = '-1'
 
-    #print(results)
-    if cnt_class >= 3:
-        msgFromServer = STEP
-    else:
-        msgFromServer = '-1'
+        # Sending a reply to client
+        bytesToSend = str.encode(msgFromServer)
+        UDPServerSocket.sendto(bytesToSend, address)
 
-
-    # Sending a reply to client
-
-    bytesToSend         = str.encode(msgFromServer)
-
-    UDPServerSocket.sendto(bytesToSend, address)
+with daemon.DaemonContext():
+    main_program()
