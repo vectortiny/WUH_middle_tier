@@ -64,8 +64,8 @@ while(True):
     STEP = message.decode()
     clientIP  = "Client IP Address:{}".format(address)
 
-    print(STEP)
-    print(clientIP)
+    # print(STEP)
+    # print(clientIP)
 
     ##
 
