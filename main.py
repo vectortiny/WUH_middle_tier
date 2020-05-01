@@ -10,23 +10,12 @@ from contextlib import contextmanager
 # read the absolute path
 script_dir = os.getcwd()
 
-@contextmanager
-def temp_fifo():
-    """Context Manager for creating named pipes."""
-    fifo_path =  script_dir + "/pipe/modelup"
-    fifo_mode = 0o600
+fifo_path =  script_dir + "/pipe/modelup"
+fifo_mode = 0o600
 
-    os.mkfifo(fifo_path, fifo_mode)  # Create FIFO
-    try:
-        yield fifo_path
-    finally:
-        os.unlink(fifo_path)  # Remove file
-
-with temp_fifo() as fifo_file:
-    # Pass the fifo_file fifo_path e.g. to some other process to read from.
-    # Write something to the pipe
-    with open(fifo_file, 'w') as f:
-        f.write("Model server starting ...\n")
+if os.path.exists(fifo_path):
+    os.remove(fifo_path)
+os.mkfifo(fifo_path, fifo_mode)
 
 #from tflite_runtime.interpreter import Interpreter
 import tensorflow as tf
@@ -73,11 +62,9 @@ def main_program():
     # Bind to address and ip
     UDPServerSocket.bind((localIP, localPort))
 
-    with temp_fifo() as fifo_file:
-        # Pass the fifo_file fifo_path e.g. to some other process to read from.
-        # Write something to the pipe
-        with open(fifo_file, 'w') as f:
-            f.write("Model server up and listening\n")
+    fifo = open(fifo_path, "w")
+    fifo.write("Model server up and listening\n")
+    fifo.close()
 
     while True:
         message, address = UDPServerSocket.recvfrom(bufferSize)
