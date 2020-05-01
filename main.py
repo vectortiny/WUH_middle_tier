@@ -7,6 +7,27 @@ import time
 import subprocess
 from contextlib import contextmanager
 
+# read the absolute path
+script_dir = os.getcwd()
+
+@contextmanager
+def temp_fifo():
+    """Context Manager for creating named pipes."""
+    fifo_path =  script_dir + "/pipe/modelup"
+    fifo_mode = 0o600
+
+    os.mkfifo(fifo_path, fifo_mode)  # Create FIFO
+    try:
+        yield fifo_path
+    finally:
+        os.unlink(fifo_path)  # Remove file
+
+with temp_fifo() as fifo_file:
+    # Pass the fifo_file fifo_path e.g. to some other process to read from.
+    # Write something to the pipe
+    with open(fifo_file, 'w') as f:
+        f.write("Model server starting ...\n")
+
 #from tflite_runtime.interpreter import Interpreter
 import tensorflow as tf
 from PIL import Image, ImageOps
@@ -36,9 +57,6 @@ def classify_image(interpreter, image, top_k=1):
     ordered = np.argpartition(-output, top_k)
     return [(i, output[i]) for i in ordered[:top_k]]
 
-# read the absolute path
-script_dir = os.getcwd()
-
 labels = load_labels("./model/converted_tflite_quantized/labels.txt")
 #interpreter = Interpreter("./model/converted_tflite_quantized/model.tflite")
 interpreter = tf.lite.Interpreter("./model/converted_tflite_quantized/model.tflite")
@@ -48,20 +66,6 @@ _, height, width, _ = interpreter.get_input_details()[0]['shape']
 localIP     = "127.0.0.1"
 localPort   = 9150
 bufferSize  = 1024
-
-
-
-@contextmanager
-def temp_fifo():
-    """Context Manager for creating named pipes."""
-    fifo_path =  script_dir + "/pipe/modelup"
-    fifo_mode = 0o600
-
-    os.mkfifo(fifo_path, fifo_mode)  # Create FIFO
-    try:
-        yield fifo_path
-    finally:
-        os.unlink(fifo_path)  # Remove file
 
 def main_program():
     # Create a datagram socket
