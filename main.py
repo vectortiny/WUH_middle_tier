@@ -5,6 +5,7 @@ import datetime
 import sys
 import time
 import subprocess
+from contextlib import contextmanager
 
 #from tflite_runtime.interpreter import Interpreter
 import tensorflow as tf
@@ -48,13 +49,31 @@ localIP     = "127.0.0.1"
 localPort   = 9150
 bufferSize  = 1024
 
-print("Model server up and listening")
+
+
+@contextmanager
+def temp_fifo():
+    """Context Manager for creating named pipes."""
+    fifo_path =  script_dir + "/pipe/modelup"
+    fifo_mode = 0o600
+
+    os.mkfifo(fifo_path, fifo_mode)  # Create FIFO
+    try:
+        yield fifo_path
+    finally:
+        os.unlink(fifo_path)  # Remove file
 
 def main_program():
     # Create a datagram socket
     UDPServerSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     # Bind to address and ip
     UDPServerSocket.bind((localIP, localPort))
+
+    with temp_fifo() as fifo_file:
+        # Pass the fifo_file fifo_path e.g. to some other process to read from.
+        # Write something to the pipe
+        with open(fifo_file, 'w') as f:
+            f.write("Model server up and listening\n")
 
     while True:
         message, address = UDPServerSocket.recvfrom(bufferSize)
